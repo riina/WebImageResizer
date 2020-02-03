@@ -1,0 +1,185 @@
+@page "/"
+
+@using SixLabors.ImageSharp
+@using SixLabors.ImageSharp.Processing
+@using SixLabors.ImageSharp.Processing.Processors.Transforms
+
+<style>
+    textarea {
+        margin: 4px, 4px;
+        padding: 4px;
+        width: 100%;
+        height: 100%;
+        -webkit-box-sizing: border-box; /* Safari/Chrome, other WebKit */
+        -moz-box-sizing: border-box; /* Firefox, other Gecko */
+        box-sizing: border-box; /* Opera/IE 8+ */
+        overflow-x: hidden;
+        overflow-y: auto;
+        text-align: justify;
+    }
+
+    table, th, td {
+        border: 1px solid black;
+    }
+
+    p {
+        word-break: break-all
+    }
+</style>
+<div style="width:100%;">
+    <div>
+        <p>Resize images to your specified sizes!</p>
+        Resampler: <select @bind="@selectedResampler">
+            @foreach (var resampler in resamplers)
+            {
+                <option value=@(resampler.Key)>@(resampler.Key)</option>
+            }
+        </select>
+        Number of outputs: <input type="number" value="@targets.Count" @onchange="@((ChangeEventArgs __e) => {
+                                                                                        var target = (int)double.Parse(__e.Value.ToString());
+                                                                                        if (target < 1) return;
+                                                                                        while (target > targets.Count)
+                                                                                            targets.Add(new Xy(100, 100));
+                                                                                        while (target < targets.Count)
+                                                                                            targets.RemoveAt(targets.Count - 1);
+                                                                                    })" placeholder="Arguments" />
+        @foreach (var target in targets)
+        {
+            <table>
+                <tr>
+                    <th>Width</th>
+                    <th>Height</th>
+                </tr>
+                <tr>
+                    <td><input type="number" @bind="target.width" /></td>
+                    <td><input type="number" @bind="target.height" /></td>
+                </tr>
+            </table>
+        }
+    </div>
+
+
+    <div class="drag-drop-zone">
+        <InputFile multiple OnChange="HandleSelection" />
+        Drop files here, or click to choose files
+    </div>
+
+    <div style="height:200px;">
+<textarea disabled>@foreach (var line in log) {
+        @line@:
+    }</textarea>
+    </div>
+</div>
+
+@inject IJSRuntime js
+@inject NavigationManager NavMan
+
+@code {
+
+    public class Xy
+    {
+        public Xy(int width, int height)
+        {
+            this.width = width;
+            this.height = height;
+        }
+        public int width;
+        public int height;
+    }
+
+    /*private void GenLink() {
+        argLink = NavMan.BaseUri + "?arg=" + HttpUtility.UrlEncode(arg) + (main?.Path ?? string.Empty);
+        StateHasChanged();
+    }*/
+
+    List<string> log = new List<string> { "Log output will be displayed here..." };
+    List<Xy> targets = new List<Xy> { new Xy(100, 100) };
+    private Dictionary<string, IResampler> resamplers = new Dictionary<string, IResampler> {
+        { "Bicubic", new BicubicResampler()},
+        { "Box", new BoxResampler()},
+        { "CatmullRom", new CatmullRomResampler() },
+        {"Hermite", new HermiteResampler() },
+        {"Lanczos2", new Lanczos2Resampler() },
+        {"Lanczos3", new Lanczos3Resampler() },
+        {"Lanczos5", new Lanczos5Resampler() },
+        {"Lanczos8", new Lanczos8Resampler() },
+        {"MitchellNetravali", new MitchellNetravaliResampler() },
+        {"NearestNeighbor", new NearestNeighborResampler() },
+        {"Robidoux", new RobidouxResampler() },
+        {"RobidouxSharp", new RobidouxSharpResampler() },
+        {"Spline", new SplineResampler() },
+        {"Triangle", new TriangleResampler() },
+        {"Welch", new WelchResampler() }
+    };
+
+    private string selectedResampler;
+    //string arg;
+    //string argLink;
+
+    protected override void OnInitialized()
+    {
+        selectedResampler = "NearestNeighbor";
+        /*var frag = new Uri(NavMan.Uri).Fragment;
+        int ind;
+        if ((ind = frag.IndexOf('?')) != -1)
+            frag = frag.Substring(0, ind);
+        var query = QueryHelpers.ParseNullableQuery(new Uri(NavMan.Uri).Query);
+        if (query?.TryGetValue("arg", out var val) ?? false)
+            arg = val[0];*/
+    }
+
+    private async Task HandleSelection(IFileListEntry[] files)
+    {
+        string last = default;
+        using MemoryStream lastMs = new MemoryStream();
+        var count = 0;
+        using var zipMs = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(zipMs, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            foreach (var file in files)
+            {
+                if (file != null)
+                {
+                    last = file.Name;
+                    using var ms = await file.ReadAllAsync(int.MaxValue);
+                    using var image = Image.Load(ms);
+                    Log($"Resizing {last}");
+                    StateHasChanged();
+                    var targName = Path.ChangeExtension(last, ".png");
+                    foreach (var target in targets)
+                    {
+                        Log($"{target.width}, {target.height}");
+                        StateHasChanged();
+                        var image2 = image.Clone(x => x.Resize(target.width, target.height, resamplers[selectedResampler]));
+                        lastMs.SetLength(0);
+                        image2.Save(lastMs, new SixLabors.ImageSharp.Formats.Png.PngEncoder());
+                        using var stream = zip.CreateEntry($"{target.width}x{target.height}.{last}").Open();
+                        lastMs.Position = 0;
+                        lastMs.CopyTo(stream);
+                        count++;
+                    }
+                }
+            }
+        }
+        if (count != 0)
+        {
+            Log("Preparing download...");
+            StateHasChanged();
+            await Task.Delay(10);
+            if (count != 1)
+                await WebImageResizerUtil.SaveByteArray(js, "WebImageResizer_result.zip", zipMs.ToArray());
+            else
+                await WebImageResizerUtil.SaveByteArray(js, last, lastMs.ToArray());
+        }
+        else
+            Log("No files were resized.");
+        Log("That's all. Have a nice day.");
+    }
+
+    private void Log(string str)
+    {
+        log.Insert(0, str);
+        if (log.Count > 300)
+            log.RemoveRange(300, log.Count - 300);
+    }
+}
