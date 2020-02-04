@@ -1,6 +1,7 @@
 @page "/"
 
 @using SixLabors.ImageSharp
+@using SixLabors.ImageSharp.Formats.Png
 @using SixLabors.ImageSharp.Processing
 @using SixLabors.ImageSharp.Processing.Processors.Transforms
 
@@ -88,7 +89,10 @@
         }
         public int Width;
         public int Height;
+        public Xy Clone() => new Xy(Width, Height);
     }
+
+    private PngEncoder Encoder = new PngEncoder();
 
     List<string> log = new List<string> { "Log output will be displayed here..." };
     List<Xy> targets = new List<Xy> { new Xy(100, 100) };
@@ -120,13 +124,14 @@
     private string selectedResampler;
 
     protected override void OnInitialized() {
-        selectedResampler = "NearestNeighbor";
+        selectedResampler = "Bicubic";
     }
 
     private void SetPreset(ChangeEventArgs e) {
         if (!presets.TryGetValue(e.Value.ToString(), out var res) || res == null) return;
         targets.Clear();
-        targets.AddRange(res);
+        foreach(var r in res)
+            targets.Add(r.Clone());
     }
 
     private void SetResampler(ChangeEventArgs e) {
@@ -151,14 +156,14 @@
                     using var image = Image.Load(ms);
                     Log($"Resizing {last}");
                     StateHasChanged();
-                    var targName = Path.ChangeExtension(last, ".png");
+                    last = Path.ChangeExtension(last, ".png");
                     foreach (var target in targets) {
-                        Log($"{target.Width}, {target.Height}");
                         if (target.Width <= 0 || target.Height <= 0) continue;
+                        Log($"{target.Width}, {target.Height}");
                         StateHasChanged();
-                        var image2 = image.Clone(x => x.Resize(target.Width, target.Height, resamplers[selectedResampler]));
                         lastMs.SetLength(0);
-                        image2.Save(lastMs, new SixLabors.ImageSharp.Formats.Png.PngEncoder());
+                        image.Clone(x => x.Resize(target.Width, target.Height, resamplers[selectedResampler]))
+                            .Save(lastMs, Encoder);
                         using var stream = zip.CreateEntry($"{target.Width}x{target.Height}.{last}").Open();
                         lastMs.Position = 0;
                         lastMs.CopyTo(stream);
