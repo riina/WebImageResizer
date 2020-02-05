@@ -30,28 +30,28 @@
 <div style="width:100%;">
     <div>
         <p>Resize images to your specified sizes!</p>
-        Resampler: <select @bind="@selectedResampler">
-            @foreach (var resampler in resamplers) {
+        Resampler: <select @onchange="@SetResampler">
+            @foreach (var resampler in _resamplers) {
                 <option value=@(resampler.Key)>@(resampler.Key)</option>
             }
         </select>
         <br />
         Preset: <select @onchange=@SetPreset>
-            @foreach (var preset in presets) {
+            @foreach (var preset in _presets) {
                 <option value=@(preset.Key)>@(preset.Key)</option>
             }
         </select>
         <br />
-        Number of outputs: <input type="number" value="@targets.Count" @onchange=@SetResampler placeholder="Arguments" />
-        @foreach (var target in targets) {
+        Number of outputs: <input type="number" value="@_targets.Count" @onchange=@SetCount placeholder="Arguments" />
+        @foreach (var target in _targets) {
             <table>
                 <tr>
                     <th>Width</th>
                     <th>Height</th>
                 </tr>
                 <tr>
-                    <td><input type="number" @bind="target.Width" /></td>
-                    <td><input type="number" @bind="target.Height" /></td>
+                    <td><input type="number" @bind="@target.Width" /></td>
+                    <td><input type="number" @bind="@target.Height" /></td>
                 </tr>
             </table>
         }
@@ -64,7 +64,7 @@
     </div>
 
     <div style="height:200px;">
-<textarea disabled>@foreach (var line in log) {
+<textarea disabled>@foreach (var line in _log) {
         @line@:
     }</textarea>
     </div>
@@ -77,7 +77,7 @@
     </div>
 </div>
 
-@inject IJSRuntime js
+@inject IJSRuntime Js
 @inject NavigationManager NavMan
 
 @code {
@@ -92,102 +92,114 @@
         public Xy Clone() => new Xy(Width, Height);
     }
 
-    private PngEncoder Encoder = new PngEncoder();
+    private readonly PngEncoder _encoder = new PngEncoder();
 
-    List<string> log = new List<string> { "Log output will be displayed here..." };
-    List<Xy> targets = new List<Xy> { new Xy(100, 100) };
-    private Dictionary<string, List<Xy>> presets = new Dictionary<string, List<Xy>> {
+    private readonly List<string> _log = new List<string> { "Log output will be displayed here..." };
+    private readonly List<Xy> _targets = new List<Xy> { new Xy(100, 100) };
+    private readonly Dictionary<string, List<Xy>> _presets = new Dictionary<string, List<Xy>> {
         { "None", null },
         { "Twitch Subscriber Emoticons (28x, 56x, 112x)", new List<Xy> { new Xy(28, 28), new Xy(56, 56), new Xy(112, 112) } },
         { "Twitch Subscriber Badges (18x, 36x, 72x)", new List<Xy> { new Xy(18, 18), new Xy(36, 36), new Xy(72, 72) } },
         { "Twitch Cover Image (1200x480)", new List<Xy> { new Xy(1200, 480) } },
         { "Twitch Video Player Offline Banner (1920x1080)", new List<Xy> { new Xy(1920, 1080) } }
     };
-    private Dictionary<string, IResampler> resamplers = new Dictionary<string, IResampler> {
-        { "Bicubic", new BicubicResampler()},
-        { "Box", new BoxResampler()},
+    private readonly Dictionary<string, IResampler> _resamplers = new Dictionary<string, IResampler> {
+        { "Bicubic", new BicubicResampler() },
+        { "Box", new BoxResampler() },
         { "CatmullRom", new CatmullRomResampler() },
-        {"Hermite", new HermiteResampler() },
-        {"Lanczos2", new Lanczos2Resampler() },
-        {"Lanczos3", new Lanczos3Resampler() },
-        {"Lanczos5", new Lanczos5Resampler() },
-        {"Lanczos8", new Lanczos8Resampler() },
-        {"MitchellNetravali", new MitchellNetravaliResampler() },
-        {"NearestNeighbor", new NearestNeighborResampler() },
-        {"Robidoux", new RobidouxResampler() },
-        {"RobidouxSharp", new RobidouxSharpResampler() },
-        {"Spline", new SplineResampler() },
-        {"Triangle", new TriangleResampler() },
-        {"Welch", new WelchResampler() }
+        { "Hermite", new HermiteResampler() },
+        { "Lanczos2", new Lanczos2Resampler() },
+        { "Lanczos3", new Lanczos3Resampler() },
+        { "Lanczos5", new Lanczos5Resampler() },
+        { "Lanczos8", new Lanczos8Resampler() },
+        { "MitchellNetravali", new MitchellNetravaliResampler() },
+        { "NearestNeighbor", new NearestNeighborResampler() },
+        { "Robidoux", new RobidouxResampler() },
+        { "RobidouxSharp", new RobidouxSharpResampler() },
+        { "Spline", new SplineResampler() },
+        { "Triangle", new TriangleResampler() },
+        { "Welch", new WelchResampler() }
     };
 
-    private string selectedResampler;
+    private IResampler _selectedResampler;
 
     protected override void OnInitialized() {
-        selectedResampler = "Bicubic";
+        _selectedResampler = _resamplers["Bicubic"];
     }
 
     private void SetPreset(ChangeEventArgs e) {
-        if (!presets.TryGetValue(e.Value.ToString(), out var res) || res == null) return;
-        targets.Clear();
+        if (!_presets.TryGetValue(e.Value.ToString(), out var res) || res == null) return;
+        _targets.Clear();
         foreach(var r in res)
-            targets.Add(r.Clone());
+            _targets.Add(r.Clone());
     }
 
     private void SetResampler(ChangeEventArgs e) {
+        if (!_resamplers.TryGetValue(e.Value.ToString(), out var res) || res == null) return;
+        _selectedResampler = res;
+    }
+
+    private void SetCount(ChangeEventArgs e) {
         var target = (int)double.Parse(e.Value.ToString());
         if (target < 1) return;
-        while (target > targets.Count)
-            targets.Add(new Xy(100, 100));
-        while (target < targets.Count)
-            targets.RemoveAt(targets.Count - 1);
+        while (target > _targets.Count)
+            _targets.Add(new Xy(100, 100));
+        while (target < _targets.Count)
+            _targets.RemoveAt(_targets.Count - 1);
     }
 
     private async Task HandleSelection(IFileListEntry[] files) {
         string last = default;
-        using MemoryStream lastMs = new MemoryStream();
         var count = 0;
-        using var zipMs = new MemoryStream();
+        await using var zipMs = new MemoryStream();
+        await using var lastMs = new MemoryStream();
         using (var zip = new System.IO.Compression.ZipArchive(zipMs, System.IO.Compression.ZipArchiveMode.Create)) {
             foreach (var file in files) {
-                if (file != null) {
-                    last = file.Name;
-                    using var ms = await file.ReadAllAsync(int.MaxValue);
-                    using var image = Image.Load(ms);
-                    Log($"Resizing {last}");
+                if (file == null) continue;
+                last = file.Name;
+                Log($"Loading {last}...");
+                StateHasChanged();
+                await Task.Delay(5);
+                var len = (int) file.Data.Length;
+                lastMs.SetLength(0);
+                if (lastMs.Capacity < len)
+                    lastMs.Capacity = len;
+                await file.Data.CopyToAsync(lastMs);
+                lastMs.Position = 0;
+                Log("Parsing...");
+                StateHasChanged();
+                await Task.Delay(5);
+                using var image = Image.Load(lastMs);
+                last = Path.ChangeExtension(last, ".png");
+                foreach (var target in _targets) {
+                    if (target.Width <= 0 || target.Height <= 0) continue;
+                    Log($"Resizing {target.Width}, {target.Height}");
                     StateHasChanged();
-                    last = Path.ChangeExtension(last, ".png");
-                    foreach (var target in targets) {
-                        if (target.Width <= 0 || target.Height <= 0) continue;
-                        Log($"{target.Width}, {target.Height}");
-                        StateHasChanged();
-                        lastMs.SetLength(0);
-                        image.Clone(x => x.Resize(target.Width, target.Height, resamplers[selectedResampler]))
-                            .Save(lastMs, Encoder);
-                        using var stream = zip.CreateEntry($"{target.Width}x{target.Height}.{last}").Open();
-                        lastMs.Position = 0;
-                        lastMs.CopyTo(stream);
-                        count++;
-                    }
+                    await Task.Delay(5);
+                    lastMs.SetLength(0);
+                    image.Clone(x => x.Resize(target.Width, target.Height, _selectedResampler))
+                        .Save(lastMs, _encoder);
+                    await using var stream = zip.CreateEntry($"{target.Width}x{target.Height}.{last}").Open();
+                    lastMs.Position = 0;
+                    lastMs.CopyTo(stream);
+                    count++;
                 }
             }
         }
-        if (count != 0) {
-            Log("Preparing download...");
-            StateHasChanged();
-            await Task.Delay(10);
-            if (count != 1)
-                await WebImageResizerUtil.SaveByteArray(js, "WebImageResizer_result.zip", zipMs.ToArray());
-            else
-                await WebImageResizerUtil.SaveByteArray(js, last, lastMs.ToArray());
-        } else
-            Log("No files were resized.");
+        if (count == 0) return;
+        Log("Preparing download...");
+        StateHasChanged();
+        await Task.Delay(5);
+        if (count != 1)
+            await WebImageResizerUtil.SaveByteArray(Js, "WebImageResizer_result.zip", zipMs.ToArray());
+        else
+            await WebImageResizerUtil.SaveByteArray(Js, last, lastMs.ToArray());
         Log("That's all. Have a nice day.");
     }
 
     private void Log(string str) {
-        log.Insert(0, str);
-        if (log.Count > 300)
-            log.RemoveRange(300, log.Count - 300);
+        _log.Insert(0, str);
+        if (_log.Count > 300)
+            _log.RemoveRange(300, _log.Count - 300);
     }
 }
