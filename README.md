@@ -4,8 +4,6 @@
 This project provides a wrapper around [ImageSharp](https://github.com/SixLabors/ImageSharp/)
 for resizing images in a browser using [Blazor](https://blazor.net) and [BlazorInputFile](https://github.com/SteveSandersonMS/BlazorInputFile).
 
-[The primary Firebase deployment is here.](https://ashe.dev)
-
 ## Attributions
 
 ### ImageSharp
